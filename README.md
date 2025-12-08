@@ -9,7 +9,7 @@ No PC required — the Cardputer *becomes* the computer.
 
 ---
 
-## 🚀 What is tinyCardputer?
+## What is tinyCardputer?
 
 tinyCardputer is a minimalistic retro environment that includes:
 
@@ -37,6 +37,8 @@ typing simple commands, experimenting, and seeing immediate results —
 
 ## 🌱 Origin of the Project
 ![TinyCardputer Banner](https://raw.githubusercontent.com/soykhaler/tinyComputer/refs/heads/main/itch_resources%20/banner%20315x250.png)
+
+
 tinyCardputer is a **derivative project** of **tinyComputer**, originally developed in Godot 3.5 as a virtual retro computer intended for beginners and experimentation.
 
 Original tinyComputer project:
