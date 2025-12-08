@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>tinyCardputer Web</title>
+<style>
+  body {
+    background: #111;
+    color: #0f0;
+    font-family: monospace;
+    text-align: center;
+  }
+  canvas {
+    border: 2px solid #0f0;
+    margin-top: 20px;
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+
+<h2>tinyCardputer Web</h2>
+<canvas id="screen" width="320" height="240"></canvas>
+
+<script>
+// ======================================================================
+// 1) PREPARAMOS CANVAS PARA EMCC
+// ======================================================================
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+
+Module = {
+  canvas: canvas,
+  canvasCtx: ctx,
+  _kbState: { enter:0, del:0, tab:0, ctrl:0, word:"" },
+  _kbChanged: 0,
+};
+
+// ======================================================================
+// 2) CAPTURA DE TECLADO PARA EMCC
+// ======================================================================
+document.addEventListener("keydown", (e) => {
+  Module._kbChanged = 1;
+
+  if (e.key === "Enter") {
+    Module._kbState.enter = 1;
+  }
+  if (e.key === "Backspace") {
+    Module._kbState.del = 1;
+  }
+  if (e.key === "Tab") {
+    Module._kbState.tab = 1;
+    e.preventDefault(); // evitar que cambie de foco
+  }
+  if (e.ctrlKey) {
+    Module._kbState.ctrl = 1;
+  }
+
+  // Caracteres normales
+  if (e.key.length === 1) {
+    Module._kbState.word = e.key;
+  }
+});
+
+document.addEventListener("keyup", (e) => {
+  // Reset solo cuando se levanta la tecla
+  if (e.key === "Enter") Module._kbState.enter = 0;
+  if (e.key === "Backspace") Module._kbState.del = 0;
+  if (e.key === "Tab") Module._kbState.tab = 0;
+  if (!e.ctrlKey) Module._kbState.ctrl = 0;
+
+  // Cuando se levanta, no hay más caracteres “word”
+  Module._kbState.word = "";
+});
+
+// ======================================================================
+// 3) CARGA DEL WASM COMPILADO POR EMSCRIPTEN
+// ======================================================================
+</script>
+
+<script src="terminal_web.js"></script>
+
+</body>
+</html>
