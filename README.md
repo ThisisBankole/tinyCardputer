@@ -1,6 +1,8 @@
 # tinyCardputer
 
 ![TinyCardputer Splash](https://raw.githubusercontent.com/soykhaler/tinyCardputer/refs/heads/main/splash.jpg)
+## Web Demo
+https://soykhaler.github.io/tinyCardputer/
 
 A retro-style, ASCII micro–operating environment for the **M5Stack Cardputer**, inspired by early home computers such as the ZX Spectrum, Commodore 64 and Amstrad CPC — and based conceptually on the original **tinyComputer** project (written in Godot).
 
