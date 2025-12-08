@@ -35,7 +35,7 @@ typing simple commands, experimenting, and seeing immediate results —
 
 ---
 
-## 🌱 Origin of the Project
+## Origin of the Project
 ![TinyCardputer Banner](https://raw.githubusercontent.com/soykhaler/tinyComputer/refs/heads/main/itch_resources%20/banner%20315x250.png)
 
 
