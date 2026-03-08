@@ -1,5 +1,6 @@
 #include "M5Cardputer.h"
 #include "splash.h"
+#include <LittleFS.h>
 #include <vector>
 
 bool editor_mode = false;
@@ -10,6 +11,8 @@ int editor_col = 0;
 M5Canvas canvas(&M5Cardputer.Display);
 String input = "> ";
 String current_cmd = "";
+
+uint32_t termColor = GREEN;  // current terminal text color
 
 
 
@@ -22,7 +25,7 @@ void wait(float seconds) { delay(seconds * 1000); }
 void bootSound() {
     beepTone(1600); wait(0.2);
     beepTone(1900); wait(0.2);
-    beepTone(1200); 
+    beepTone(1200);
 }
 
 void terminal_print(const String &msg) {
@@ -39,6 +42,165 @@ void ascii_window(const String &msg) {
 }
 
 
+// ─── New command helpers ──────────────────────────────────────────────────────
+
+void cmd_color(String arg) {
+    arg.trim();
+    arg.toLowerCase();
+    uint32_t c = GREEN;
+    if      (arg == "red")    c = RED;
+    else if (arg == "green")  c = GREEN;
+    else if (arg == "white")  c = WHITE;
+    else if (arg == "yellow") c = YELLOW;
+    else if (arg == "cyan")   c = CYAN;
+    else if (arg == "blue")   c = BLUE;
+    else {
+        terminal_print("Colors: red green white yellow cyan blue");
+        return;
+    }
+    termColor = c;
+    canvas.setTextColor(c);
+    terminal_print("Color: " + arg);
+}
+
+void cmd_melody(String arg) {
+    arg.trim();
+    std::vector<int> vals;
+    int start = 0;
+    for (int i = 0; i <= (int)arg.length(); i++) {
+        if (i == (int)arg.length() || arg[i] == ',') {
+            String tok = arg.substring(start, i);
+            tok.trim();
+            vals.push_back(tok.toInt());
+            start = i + 1;
+        }
+    }
+    if (vals.size() < 2 || vals.size() % 2 != 0) {
+        terminal_print("Usage: melody freq,dur,freq,dur,...");
+        return;
+    }
+    terminal_print("Playing melody...");
+    for (int i = 0; i + 1 < (int)vals.size(); i += 2) {
+        int freq = vals[i];
+        int dur  = vals[i + 1];
+        M5Cardputer.Speaker.tone(freq, dur);
+        delay(dur + 50);
+    }
+}
+
+void cmd_save(String name) {
+    name.trim();
+    if (name.length() == 0) { terminal_print("Usage: save <name>"); return; }
+    String path = "/" + name + ".txt";
+    File f = LittleFS.open(path, "w");
+    if (!f) { terminal_print("Error opening file."); return; }
+    for (auto &ln : editor_lines) f.println(ln);
+    f.close();
+    terminal_print("Saved: " + name);
+}
+
+void cmd_load(String name) {
+    name.trim();
+    if (name.length() == 0) { terminal_print("Usage: load <name>"); return; }
+    String path = "/" + name + ".txt";
+    File f = LittleFS.open(path, "r");
+    if (!f) { terminal_print("Not found: " + name); return; }
+    editor_lines.clear();
+    while (f.available()) {
+        String ln = f.readStringUntil('\n');
+        ln.trim();
+        editor_lines.push_back(ln);
+    }
+    f.close();
+    if (editor_lines.empty()) editor_lines.push_back("");
+    editor_line = 0;
+    editor_col  = 0;
+    editor_mode = true;
+    terminal_print("Loaded: " + name);
+}
+
+void cmd_ls() {
+    File root = LittleFS.open("/");
+    File file = root.openNextFile();
+    bool any = false;
+    while (file) {
+        terminal_print(String(file.name()));
+        file = root.openNextFile();
+        any = true;
+    }
+    if (!any) terminal_print("(no saved scripts)");
+}
+
+void cmd_battery() {
+    int level = M5Cardputer.Power.getBatteryLevel();
+    terminal_print("Battery: " + String(level) + "%");
+}
+
+void cmd_calc(String expr) {
+    expr.trim();
+    // Find the operator (skip a possible leading minus sign)
+    int opIdx = -1;
+    char op = 0;
+    for (int i = 1; i < (int)expr.length(); i++) {
+        char c = expr[i];
+        if (c == '+' || c == '-' || c == '*' || c == '/') {
+            opIdx = i; op = c; break;
+        }
+    }
+    if (opIdx < 0) { terminal_print("Usage: calc 2+3"); return; }
+    float a = expr.substring(0, opIdx).toFloat();
+    float b = expr.substring(opIdx + 1).toFloat();
+    float result = 0;
+    if      (op == '+') result = a + b;
+    else if (op == '-') result = a - b;
+    else if (op == '*') result = a * b;
+    else if (op == '/') {
+        if (b == 0) { terminal_print("Error: divide by zero"); return; }
+        result = a / b;
+    }
+    // Print as int if whole number, otherwise float
+    if (result == (int)result)
+        terminal_print("= " + String((int)result));
+    else
+        terminal_print("= " + String(result, 4));
+}
+
+// Morse code table: A-Z then 0-9
+static const char* MORSE[] = {
+    ".-",   "-...", "-.-.", "-..",  ".",    "..-.", "--.",  "....",  // A-H
+    "..",   ".---", "-.-",  ".-..", "--",   "-.",   "---",  ".--.",  // I-P
+    "--.-", ".-.",  "...",  "-",    "..-",  "...-", ".--",  "-..-",  // Q-X
+    "-.--", "--..",                                                   // Y-Z
+    "-----",".----","..---","...--","....-",".....","-....","--...",  // 0-7
+    "---..", "----."                                                   // 8-9
+};
+
+void cmd_morse(String text) {
+    text.toUpperCase();
+    terminal_print("Morse: " + text);
+    for (int i = 0; i < (int)text.length(); i++) {
+        char c = text[i];
+        if (c == ' ') { delay(560); continue; }
+        int idx = -1;
+        if (c >= 'A' && c <= 'Z') idx = c - 'A';
+        else if (c >= '0' && c <= '9') idx = 26 + (c - '0');
+        if (idx < 0) continue;
+        const char* seq = MORSE[idx];
+        for (int j = 0; seq[j]; j++) {
+            if (seq[j] == '.') {
+                M5Cardputer.Speaker.tone(800, 80);
+                delay(80);
+            } else {
+                M5Cardputer.Speaker.tone(800, 240);
+                delay(240);
+            }
+            delay(80); // symbol gap
+        }
+        delay(240); // letter gap
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 
 void process_command(String cmd) {
@@ -60,13 +222,22 @@ void process_command(String cmd) {
     if (lower == "help") {
         ascii_window(
             "help - Show this message\n"
-            "echo [txt] - Print text on terminal\n"
-            "beep [hz] - sounds a beeper\n"
-            "window [msg] - show ASCII screen\n"
-            "boot - call boot sound\n"
-            "error - call error sound\n"
+            "echo [txt] - Print text\n"
+            "beep [hz] - Sound beeper\n"
+            "window [msg] - ASCII window\n"
+            "boot - Boot sound\n"
+            "error - Error sound\n"
             "clear - Clear terminal\n"
-            "minicoder - enter code editor\n"
+            "minicoder - Code editor\n"
+            "color [name] - Text color\n"
+            "melody f,d,f,d - Play notes\n"
+            "save [name] - Save script\n"
+            "load [name] - Load script\n"
+            "ls - List saved scripts\n"
+            "calc [expr] - Math (2+3)\n"
+            "morse [text] - Morse beep\n"
+            "battery - Battery level\n"
+            "reboot - Restart device\n"
             "exit"
         );
         return;
@@ -104,6 +275,17 @@ void process_command(String cmd) {
         return;
     }
 
+    // New commands
+    if (lower == "reboot")                { ESP.restart(); return; }
+    if (lower == "battery")               { cmd_battery(); return; }
+    if (lower == "ls")                    { cmd_ls(); return; }
+    if (lower.startsWith("color "))       { cmd_color(cmd.substring(6)); return; }
+    if (lower.startsWith("melody "))      { cmd_melody(cmd.substring(7)); return; }
+    if (lower.startsWith("save "))        { cmd_save(cmd.substring(5)); return; }
+    if (lower.startsWith("load "))        { cmd_load(cmd.substring(5)); return; }
+    if (lower.startsWith("calc "))        { cmd_calc(cmd.substring(5)); return; }
+    if (lower.startsWith("morse "))       { cmd_morse(cmd.substring(6)); return; }
+
     terminal_print("Unknown command.");
 }
 
@@ -115,7 +297,7 @@ void draw_editor() {
     canvas.println("CTRL+ENTER = Run | TAB = Exit");
     canvas.println("--------------------------------");
 
-    for (int i = 0; i < editor_lines.size(); i++) {
+    for (int i = 0; i < (int)editor_lines.size(); i++) {
         String ln = String(i + 1) + " | ";
         canvas.print(ln);
         canvas.println(editor_lines[i]);
@@ -190,7 +372,7 @@ void run_script() {
         cmd.trim();
 
         if (cmd.length() == 0) continue;
-        if (cmd == "//") continue;
+        if (cmd.startsWith("//")) continue;
 
         String lower = cmd;
         lower.toLowerCase();
@@ -241,10 +423,28 @@ void run_script() {
                 "wait -> wait any time\n"
                 "boot -> play boot sound\n"
                 "window -> create window\n"
+                "color -> text color\n"
+                "melody -> play notes\n"
+                "save/load -> filesystem\n"
+                "calc -> math expr\n"
+                "morse -> morse beep\n"
+                "battery -> battery %\n"
+                "reboot -> restart\n"
                 "help -> show this help"
             );
             continue;
         }
+
+        // New commands in script mode
+        if (lower == "reboot")           { ESP.restart(); continue; }
+        if (lower == "battery")          { cmd_battery(); continue; }
+        if (lower == "ls")               { cmd_ls(); continue; }
+        if (lower.startsWith("color "))  { cmd_color(cmd.substring(6)); continue; }
+        if (lower.startsWith("melody ")) { cmd_melody(cmd.substring(7)); continue; }
+        if (lower.startsWith("save "))   { cmd_save(cmd.substring(5)); continue; }
+        if (lower.startsWith("load "))   { cmd_load(cmd.substring(5)); continue; }
+        if (lower.startsWith("calc "))   { cmd_calc(cmd.substring(5)); continue; }
+        if (lower.startsWith("morse "))  { cmd_morse(cmd.substring(6)); continue; }
 
         terminal_print("Unknown: " + cmd);
     }
@@ -256,6 +456,8 @@ void run_script() {
 void setup() {
     auto cfg = M5.config();
     M5Cardputer.begin(cfg, true);
+
+    LittleFS.begin(true);
 
     M5Cardputer.Display.fillScreen(BLACK);
     M5Cardputer.Display.drawJpg(splash_jpg, splash_jpg_len, 0, 0);
@@ -309,8 +511,8 @@ void loop() {
 
         if (status.tab) {
             editor_mode = false;
-            redraw_terminal_ui();     
-            terminal_print("--- Exiting miniCoder ---");   
+            redraw_terminal_ui();
+            terminal_print("--- Exiting miniCoder ---");
             terminal_print("Exited miniCoder (use 'minicoder' to return).");
             terminal_print("type 'help' for commands.");
             return;
